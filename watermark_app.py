@@ -20,7 +20,7 @@ DEFAULT_WATERMARK_COLOR = "#ffffff"
 DEFAULT_OPACITY = 0.5
 DEFAULT_LOGO_SCALE = 0.15
 DEFAULT_PADDING = 30
-DEFAULT_BRAND_NAME = "12Taste "
+DEFAULT_BRAND_NAME = "JhumJhum "
 
 # --- Password Protection ---
 def check_password():
