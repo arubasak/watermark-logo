@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*- # Add this line for better encoding support
 import streamlit as st
 import os
 import shutil
@@ -20,7 +21,7 @@ DEFAULT_WATERMARK_COLOR = "#ffffff"
 DEFAULT_OPACITY = 0.5
 DEFAULT_LOGO_SCALE = 0.15
 DEFAULT_PADDING = 30
-DEFAULT_BRAND_NAME = "JhumJhum "
+DEFAULT_BRAND_NAME = "JhumJhum  "
 
 # --- Password Protection ---
 def check_password():
@@ -74,27 +75,10 @@ def check_password():
 if not check_password():
     st.stop() # Stop if authentication fails
 
+st.set_page_config(layout="wide") # Optional: Use wider layout
+
 st.title("🖼️ Add Your Logo and Brand Watermark to Product Images")
 
-# Option to explicitly clean folders (might be safer than always cleaning)
-# if st.sidebar.button("⚠️ Clear Working Folders (Deletes Previous Runs)"):
-#     with st.spinner("Clearing working folders..."):
-#         for folder in [PRODUCTS_DIR, OUTPUT_DIR]:
-#             if os.path.exists(folder):
-#                 try:
-#                     shutil.rmtree(folder)
-#                 except OSError as e:
-#                     st.error(f"Error removing folder {folder}: {e}")
-#                     st.stop()
-#         # Recreate folders after clearing
-#         for folder in [PRODUCTS_DIR, OUTPUT_DIR]:
-#             try:
-#                 os.makedirs(folder, exist_ok=True) # exist_ok=True is safer
-#             except OSError as e:
-#                 st.error(f"Error creating folder {folder}: {e}")
-#                 st.stop()
-#         st.sidebar.success("Folders cleared and recreated.")
-# else:
 # Ensure folders exist without clearing (default behavior)
 for folder in [PRODUCTS_DIR, OUTPUT_DIR]:
     try:
@@ -105,8 +89,11 @@ for folder in [PRODUCTS_DIR, OUTPUT_DIR]:
 
 
 # --- File Uploads ---
-logo_file = st.file_uploader("1. Upload your logo (PNG with transparency preferred)", type=["png"])
-product_zip_file = st.file_uploader("2. Upload a ZIP containing product images (PNG/JPG/JPEG)", type=["zip"])
+col1, col2 = st.columns(2)
+with col1:
+    logo_file = st.file_uploader("1. Upload your logo (PNG with transparency preferred)", type=["png"], key="logo_uploader")
+with col2:
+    product_zip_file = st.file_uploader("2. Upload a ZIP containing product images (PNG/JPG/JPEG)", type=["zip"], key="zip_uploader")
 
 # --- Guard Clauses ---
 if not logo_file:
@@ -150,52 +137,47 @@ try:
 
     # --- Configuration ---
     st.sidebar.header("⚙️ Customization")
-    opacity = st.sidebar.slider("Watermark Text Opacity", 0.0, 1.0, DEFAULT_OPACITY, 0.05)
-    watermark_color_hex = st.sidebar.color_picker("Watermark Text Color", DEFAULT_WATERMARK_COLOR)
-    position = st.sidebar.selectbox("Watermark Text Position", ["Top", "Middle", "Bottom"], index=1) # Default Middle
-    logo_scale = st.sidebar.slider("Logo Size (relative to image width)", 0.05, 0.5, DEFAULT_LOGO_SCALE, 0.01)
-    padding = st.sidebar.slider("Logo/Text Padding (pixels from edge)", 5, 100, DEFAULT_PADDING, 5)
-    font_size = st.sidebar.slider("Watermark Font Size", 10, 150, DEFAULT_FONT_SIZE, 5) # Increased max size
-    brand_name = st.sidebar.text_input("Watermark Text", DEFAULT_BRAND_NAME)
-    horizontal_spacing = st.sidebar.slider("Horizontal Text Spacing", 10, 200, 50, 10)
+    opacity = st.sidebar.slider("Watermark Text Opacity", 0.0, 1.0, DEFAULT_OPACITY, 0.05, key="opacity_slider")
+    watermark_color_hex = st.sidebar.color_picker("Watermark Text Color", DEFAULT_WATERMARK_COLOR, key="color_picker")
+    position = st.sidebar.selectbox("Watermark Text Position", ["Top", "Middle", "Bottom"], index=1, key="position_select") # Default Middle
+    logo_scale = st.sidebar.slider("Logo Size (relative to image width)", 0.05, 0.5, DEFAULT_LOGO_SCALE, 0.01, key="logo_scale_slider")
+    padding = st.sidebar.slider("Logo/Text Padding (pixels from edge)", 5, 100, DEFAULT_PADDING, 5, key="padding_slider")
+    font_size = st.sidebar.slider("Watermark Font Size", 10, 150, DEFAULT_FONT_SIZE, 5, key="fontsize_slider") # Increased max size
+    brand_name = st.sidebar.text_input("Watermark Text", DEFAULT_BRAND_NAME, key="brand_text_input")
+    horizontal_spacing = st.sidebar.slider("Horizontal Text Spacing", 10, 200, 50, 10, key="hspacing_slider")
 
 
     # --- Font Loading ---
     try:
         font = ImageFont.truetype(FONT_PATH, font_size)
-        st.sidebar.info(f"Using font: {FONT_PATH}")
+        # st.sidebar.info(f"Using font: {FONT_PATH}") # Can be noisy, optional
     except IOError:
         st.sidebar.warning(f"Font '{FONT_PATH}' not found. Trying system 'arial.ttf'.")
         try:
             # Attempt common system font paths
             font = ImageFont.truetype("arial.ttf", font_size)
-            st.sidebar.info("Using system font: arial.ttf")
+            # st.sidebar.info("Using system font: arial.ttf") # Optional
         except IOError:
             st.sidebar.error("System 'arial.ttf' not found. Using default built-in font (basic).")
             font = ImageFont.load_default() # Absolute fallback (might not respect size well)
 
     # --- Image Processing ---
     processed_files = []
-    # Filter for valid image extensions and ignore macOS metadata files
-    files_to_process = [
-        f for f in os.listdir(PRODUCTS_DIR)
-        if f.lower().endswith((".png", ".jpg", ".jpeg")) and not f.startswith('__MACOSX') and not f.startswith('.')
-    ]
-    # Also handle cases where images might be in a subdirectory within the zip
+    files_to_process_paths = [] # Store full paths for processing
+    # Find all image files recursively
     for root, _, files in os.walk(PRODUCTS_DIR):
         for f in files:
-             if f.lower().endswith((".png", ".jpg", ".jpeg")) and not f.startswith('.') and os.path.join(root, f) not in files_to_process:
-                 # Add the relative path to the list if it's an image
-                 relative_path = os.path.relpath(os.path.join(root, f), PRODUCTS_DIR)
-                 if relative_path not in files_to_process: # Avoid duplicates if already found at top level
-                     files_to_process.append(relative_path)
+             # Filter for valid image extensions and ignore macOS metadata/hidden files
+             if f.lower().endswith((".png", ".jpg", ".jpeg")) and not f.startswith('.') and '__MACOSX' not in root:
+                 full_path = os.path.join(root, f)
+                 files_to_process_paths.append(full_path)
 
 
-    if not files_to_process:
+    if not files_to_process_paths:
         st.warning("⚠️ No valid image files (PNG, JPG, JPEG) found in the extracted ZIP structure.")
         st.stop()
 
-    st.write(f"Found {len(files_to_process)} images to process.")
+    st.write(f"Found {len(files_to_process_paths)} images to process.")
     progress_bar = st.progress(0)
     status_text = st.empty() # Placeholder for status updates
     processed_count = 0
@@ -221,15 +203,15 @@ try:
             st.stop()
 
 
-    for i, relative_fname in enumerate(files_to_process):
-        product_path = os.path.join(PRODUCTS_DIR, relative_fname)
-        # Create the same subdirectory structure in the output if needed
-        output_sub_dir = os.path.dirname(os.path.join(OUTPUT_DIR, relative_fname))
-        if output_sub_dir != OUTPUT_DIR:
-             os.makedirs(output_sub_dir, exist_ok=True)
+    for i, product_path in enumerate(files_to_process_paths):
+        relative_path = os.path.relpath(product_path, PRODUCTS_DIR)
+        base_fname = os.path.basename(product_path) # Get filename for messages
+        status_text.text(f"Processing: {base_fname} ({i + 1}/{len(files_to_process_paths)})")
 
-        base_fname = os.path.basename(relative_fname) # Get filename for messages
-        status_text.text(f"Processing: {base_fname} ({i + 1}/{len(files_to_process)})")
+        # Create the same subdirectory structure in the output if needed
+        output_sub_dir = os.path.dirname(os.path.join(OUTPUT_DIR, relative_path))
+        if not os.path.exists(output_sub_dir):
+             os.makedirs(output_sub_dir, exist_ok=True)
 
         try:
             product = Image.open(product_path).convert("RGBA")
@@ -254,62 +236,58 @@ try:
             try:
                 # Pillow >= 9.1.0 prefers Resampling enums
                 from PIL.Image import Resampling
-                logo = logo.resize((target_width, target_height), Resampling.LANCZOS)
+                logo_resized = logo.resize((target_width, target_height), Resampling.LANCZOS)
             except ImportError:
                  # Fallback for older Pillow versions
-                 logo = logo.resize((target_width, target_height), Image.LANCZOS)
+                 logo_resized = logo.resize((target_width, target_height), Image.LANCZOS)
 
 
             # Calculate logo position (bottom-right with padding)
-            x_logo = product.width - logo.width - padding
-            y_logo = product.height - logo.height - padding
+            x_logo = product.width - logo_resized.width - padding
+            y_logo = product.height - logo_resized.height - padding
             # Paste logo onto the watermark layer using its own alpha channel as mask
-            watermark_layer.paste(logo, (x_logo, y_logo), logo)
+            watermark_layer.paste(logo_resized, (x_logo, y_logo), logo_resized) # Use resized logo mask
 
             # --- Repeating Text Watermark ---
             cleaned_brand_name = brand_name.strip()
             if cleaned_brand_name: # Only add text if brand name is not empty
                 try:
                     # --- Use textbbox to get text dimensions ---
-                    # Calculate bounding box starting at (0,0) to get width/height
-                    # bbox = (left, top, right, bottom)
-                    text_bbox = draw.textbbox((0, 0), cleaned_brand_name, font=font)
+                    text_bbox = draw.textbbox((0, 0), cleaned_brand_name, font=font, anchor="lt") # Use anchor for consistency
                     text_width = text_bbox[2] - text_bbox[0]  # right - left
                     text_height = text_bbox[3] - text_bbox[1] # bottom - top
 
-                    # Handle cases where font/text might result in zero dimensions
                     if text_width <= 0 or text_height <= 0:
                         st.warning(f"⚠️ Calculated zero dimensions for text '{cleaned_brand_name}' with selected font/size. Skipping text watermark for {base_fname}.")
                     else:
                         # Calculate vertical position based on selection
                         if position == "Top":
-                            # Position the top of the text bbox at padding distance
-                            text_y = padding
+                            text_y = padding # Position top of text at padding
                         elif position == "Middle":
-                            # Center the text block vertically
-                            text_y = (product.height - text_height) // 2
+                            text_y = (product.height - text_height) // 2 # Center block
                         else: # Bottom
-                            # Position the bottom of the text bbox at padding distance from bottom
-                            text_y = product.height - text_height - padding
+                            text_y = product.height - text_height - padding # Position top so bottom is at padding
 
-                        # Repeat the brand name horizontally
                         step = text_width + horizontal_spacing
-                        if step <= 0 : step = 1 # Prevent infinite loop if spacing is negative/zero
+                        if step <= 0 : step = 1
 
-                        # Start slightly left to make the pattern seem continuous
                         start_x = -(text_width % step if step > 0 else 0)
 
                         for x_text in range(start_x, product.width, step):
-                            # Draw text at calculated (x, y) position using specified color and font
-                            draw.text((x_text, text_y), cleaned_brand_name, font=font, fill=text_color)
+                            draw.text((x_text, text_y), cleaned_brand_name, font=font, fill=text_color, anchor="lt") # Use anchor
 
-                except AttributeError:
-                    # Should not happen with modern Pillow, but good to keep
-                    st.error("❌ Pillow version might be too old and lacks textbbox. Please update Pillow (`pip install --upgrade Pillow`). Skipping text watermark.")
+                except AttributeError as e:
+                    if 'textbbox' in str(e):
+                         st.error("❌ Pillow version might be too old and lacks textbbox. Please update Pillow (`pip install --upgrade Pillow`). Skipping text watermark.")
+                    elif 'anchor' in str(e):
+                         st.warning("⚠️ Pillow version too old for text 'anchor'. Text positioning might be less precise. Consider upgrading Pillow.")
+                         # Fallback drawing without anchor if needed (might require position adjustments)
+                         draw.text((x_text, text_y), cleaned_brand_name, font=font, fill=text_color) # Simple draw
+                    else:
+                        st.error(f"❌ Text drawing error for {base_fname}: {e}. Skipping text watermark.")
                     error_count += 1
                 except Exception as text_err:
-                    st.error(f"❌ Error calculating text dimensions or drawing text for {base_fname}: {text_err}. Skipping text watermark.")
-                    # st.error(traceback.format_exc()) # Uncomment for more debug info
+                    st.error(f"❌ Error calculating/drawing text for {base_fname}: {text_err}. Skipping text watermark.")
                     error_count += 1
 
 
@@ -317,31 +295,20 @@ try:
             final_image = Image.alpha_composite(product, watermark_layer)
 
             # Save the final image
-            # Always save as PNG to preserve potential transparency in logo/watermark
-            # Use the relative path structure for output
             out_fname_base = os.path.splitext(base_fname)[0]
             out_fname = f"{out_fname_base}_branded.png"
             out_path = os.path.join(output_sub_dir, out_fname)
 
-            # Convert back to RGB if the original was likely JPG/JPEG for potentially smaller size,
-            # but this LOSES transparency if the original had none. PNG is safer.
-            # if product_path.lower().endswith((".jpg", ".jpeg")):
-            #     final_image = final_image.convert("RGB")
-            #     final_image.save(out_path, "JPEG", quality=95) # Or save as JPEG
-            # else:
-            #     final_image.save(out_path, "PNG")
-            final_image.save(out_path, "PNG") # Sticking to PNG for consistency
-
+            final_image.save(out_path, "PNG")
             processed_files.append(out_path)
             processed_count += 1
 
         except Exception as img_err:
             st.error(f"❌ Failed to process image `{base_fname}`: {img_err}")
-            # st.error(traceback.format_exc()) # Uncomment for detailed traceback
+            st.error(traceback.format_exc()) # More details for image processing errors
             error_count += 1
 
-        # Update progress bar
-        progress_bar.progress((i + 1) / len(files_to_process))
+        progress_bar.progress((i + 1) / len(files_to_process_paths))
 
     status_text.text(f"Processing complete. {processed_count} images processed, {error_count} errors.")
     progress_bar.empty() # Clear progress bar
@@ -353,15 +320,19 @@ try:
     # --- Preview ---
     st.subheader("🖼️ Preview (First 5 Images)")
     preview_count = 0
-    for path in processed_files:
-        if preview_count < 5:
-            try:
-                st.image(path, caption=os.path.basename(path), use_column_width=True)
-                preview_count += 1
-            except Exception as e:
-                st.error(f"Error displaying preview for {os.path.basename(path)}: {e}")
-        else:
-            break
+    if processed_files:
+        # Determine number of columns based on how many images we have, max 5
+        num_columns = min(len(processed_files), 5)
+        cols = st.columns(num_columns)
+        for idx, path in enumerate(processed_files[:num_columns]):
+             try:
+                 with cols[idx]:
+                    st.image(path, caption=os.path.basename(path), use_container_width=True) # Use container width here
+                    preview_count += 1
+             except Exception as e:
+                 st.error(f"Error displaying preview for {os.path.basename(path)}: {e}")
+    else:
+        st.info("No images available for preview.")
 
 
     # --- Zip and Download ---
@@ -369,20 +340,18 @@ try:
     if processed_files:
         with st.spinner("Zipping processed images..."):
             zip_buffer = BytesIO()
-            # Use ZIP_DEFLATED for compression
             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
                 for file_path in processed_files:
-                    # Add file to zip using its base name (or relative path from OUTPUT_DIR)
                     arcname = os.path.relpath(file_path, OUTPUT_DIR)
                     zipf.write(file_path, arcname=arcname)
-            zip_buffer.seek(0) # Rewind buffer to the beginning
+            zip_buffer.seek(0)
 
         st.download_button(
             label=f"📦 Download All ({processed_count}) Branded Images as ZIP",
             data=zip_buffer,
             file_name="branded_images.zip",
             mime="application/zip",
-            key="download_zip_button" # Added key for potential state management
+            key="download_zip_button"
         )
     else:
         st.warning("No files were successfully processed to include in the ZIP.")
