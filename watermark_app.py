@@ -103,7 +103,7 @@ if not check_password():
     st.stop()
 
 st.set_page_config(layout="wide")
-st.title("🖼️ Add Logo & Brand Watermark")
+st.title("🖼️ JhumJhum's Brand Watermark App")
 
 for folder in [PRODUCTS_DIR, OUTPUT_DIR]:
     os.makedirs(folder, exist_ok=True)
