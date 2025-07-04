@@ -110,29 +110,19 @@ for folder in [PRODUCTS_DIR, OUTPUT_DIR]:
 
 col1, col2 = st.columns(2)
 with col1:
-    # Let's accept common image types to avoid initial rejection by the browser's reported MIME type.
-    logo_file = st.file_uploader("1. Upload Logo (PNG only)", type=ALLOWED_IMAGE_TYPES) 
+    logo_file = st.file_uploader("1. Upload Logo (PNG recommended)", type=ALLOWED_IMAGE_TYPES) 
 with col2:
     uploaded_files = st.file_uploader("2. Upload Product Images (ZIP, PNG, JPG, JPEG)", type=ALLOWED_UPLOAD_TYPES, accept_multiple_files=True)
-
-# REMOVED: The faulty filename check is gone from here.
 
 if not logo_file or not uploaded_files:
     st.info("💡 Please upload both a logo and product images to continue.")
     st.stop()
 
 try:
-    # Open the image from the uploaded bytes
-    original_logo = Image.open(BytesIO(logo_file.getvalue()))
-
-    # --- ADDED: THE DEFINITIVE, CONTENT-BASED VALIDATION ---
-    # After opening the image, check the format Pillow detected from its content.
-    if original_logo.format != 'PNG':
-        st.error(f"The uploaded logo is not a valid PNG file. It was detected as a {original_logo.format} file. Please upload a file in PNG format.")
-        st.stop()
-
-    # Now that we know it's a PNG, we can safely convert to RGBA
-    original_logo = original_logo.convert("RGBA")
+    # --- THE DEFINITIVE FIX ---
+    # Open the uploaded file and convert to RGBA. This handles all formats gracefully.
+    # All strict checks have been removed.
+    original_logo = Image.open(BytesIO(logo_file.getvalue())).convert("RGBA")
 
     # --- Configuration ---
     st.sidebar.header("⚙️ Customization")
@@ -177,7 +167,6 @@ try:
     if os.path.exists(OUTPUT_DIR): shutil.rmtree(OUTPUT_DIR)
     os.makedirs(OUTPUT_DIR)
 
-    # ... (rest of the processing loop remains the same) ...
     for i, product_path in enumerate(files_to_process):
         base_fname = os.path.basename(product_path)
         status_text.text(f"Processing: {base_fname} ({i + 1}/{len(files_to_process)})")
