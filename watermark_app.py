@@ -87,76 +87,86 @@ def prepare_input_images(uploaded_files, target_dir):
     with st.spinner("Preparing uploaded images..."):
         for uploaded_file in uploaded_files:
             try:
-                # --- MODIFIED ZIP CHECK ---
+                # --- ZIP CHECK ---
                 is_zip = False
-                # 1. Check if MIME type is in our known list
                 if uploaded_file.type in KNOWN_ZIP_MIMES:
                     is_zip = True
-                # 2. Fallback: Check file extension (case-insensitive)
-                elif uploaded_file.name and uploaded_file.name.lower().endswith(".zip"): # Check name exists
+                elif uploaded_file.name and uploaded_file.name.lower().endswith(".zip"):
                      st.write(f"Info: Treating file '{uploaded_file.name}' as ZIP based on extension (MIME type was: '{uploaded_file.type}')")
                      is_zip = True
 
                 if is_zip:
-                # --- END MODIFIED ZIP CHECK ---
                     st.write(f"Extracting ZIP file: `{uploaded_file.name}`")
                     try:
-                        # Use BytesIO for reading file content in memory from UploadedFile
-                        zip_file_bytes = BytesIO(uploaded_file.getvalue()) # Use getvalue()
+                        zip_file_bytes = BytesIO(uploaded_file.getvalue())
                         with zipfile.ZipFile(zip_file_bytes, "r") as zip_ref:
                             zip_ref.extractall(target_dir)
                         st.success(f"✅ Extracted `{uploaded_file.name}`")
                     except zipfile.BadZipFile:
                         st.error(f"❌ Invalid or corrupted ZIP file: `{uploaded_file.name}`. Skipping.")
-                        any_processing_error = True # Mark that an error occurred
+                        any_processing_error = True
                     except Exception as e:
                         st.error(f"❌ Error extracting ZIP `{uploaded_file.name}`: {e}")
-                        st.error(traceback.format_exc()) # More details on error
+                        st.error(traceback.format_exc())
                         any_processing_error = True
-
-                # Check if it's an allowed image type (only if not identified as zip)
-                elif uploaded_file.type and uploaded_file.type.split('/')[-1] in ALLOWED_IMAGE_TYPES: # Check type exists
-                    st.write(f"Processing image file: `{uploaded_file.name}`")
-                    img_path = os.path.join(target_dir, uploaded_file.name)
-                    try:
-                        # Use getvalue() to get bytes from UploadedFile
-                        with open(img_path, "wb") as f:
-                            f.write(uploaded_file.getvalue())
-                    except Exception as e:
-                         st.error(f"❌ Error saving image `{uploaded_file.name}`: {e}")
-                         any_processing_error = True
+                
+                # --- START: MODIFIED IMAGE CHECK (THIS IS THE FIX) ---
                 else:
-                    # Handle cases where file name or type might be None
-                    file_name_for_log = getattr(uploaded_file, 'name', '[Unknown Filename]')
-                    file_type_for_log = getattr(uploaded_file, 'type', '[Unknown Type]')
-                    st.warning(f"⚠️ Skipping unsupported file type: `{file_name_for_log}` (Reported MIME type: {file_type_for_log})")
+                    is_allowed_image = False
+                    # 1. First, check by MIME type (the original method)
+                    if uploaded_file.type and uploaded_file.type.split('/')[-1] in ALLOWED_IMAGE_TYPES:
+                        is_allowed_image = True
+                    
+                    # 2. Fallback: If MIME check fails, check the file extension
+                    elif uploaded_file.name:
+                        try:
+                            file_ext = os.path.splitext(uploaded_file.name)[1].lower().lstrip('.')
+                            if file_ext in ALLOWED_IMAGE_TYPES:
+                                st.write(f"Info: Accepting file '{uploaded_file.name}' based on its extension (MIME type was: '{uploaded_file.type}')")
+                                is_allowed_image = True
+                        except Exception:
+                            pass # Ignore errors in extension checking, we will just skip the file
+
+                    # 3. Process the file if it passed either check
+                    if is_allowed_image:
+                        st.write(f"Processing image file: `{uploaded_file.name}`")
+                        img_path = os.path.join(target_dir, uploaded_file.name)
+                        try:
+                            with open(img_path, "wb") as f:
+                                f.write(uploaded_file.getvalue())
+                        except Exception as e:
+                             st.error(f"❌ Error saving image `{uploaded_file.name}`: {e}")
+                             any_processing_error = True
+                    else:
+                        # 4. If both checks fail, skip the file with a warning
+                        file_name_for_log = getattr(uploaded_file, 'name', '[Unknown Filename]')
+                        file_type_for_log = getattr(uploaded_file, 'type', '[Unknown Type]')
+                        st.warning(f"⚠️ Skipping unsupported file type: `{file_name_for_log}` (Reported MIME type: {file_type_for_log})")
+                # --- END: MODIFIED IMAGE CHECK ---
 
             except Exception as e:
                 st.error(f"❌ Unexpected error processing file `{getattr(uploaded_file, 'name', '[Unknown Filename]')}`: {e}")
-                st.error(traceback.format_exc()) # More details on error
-                any_processing_error = True # Mark that an error occurred
+                st.error(traceback.format_exc())
+                any_processing_error = True
 
     if any_processing_error:
          st.warning("Some files could not be processed or extracted correctly. Check logs above.")
 
-    # Check if any valid images ended up in the directory *after* processing
     try:
         image_files_found = any(f.lower().endswith(tuple(f".{ext}" for ext in ALLOWED_IMAGE_TYPES))
                                for _, _, files in os.walk(target_dir) for f in files)
     except Exception as walk_err:
          st.error(f"Error checking for image files in {target_dir}: {walk_err}")
-         return False # Cannot verify output
+         return False
 
     if not image_files_found:
         if any_processing_error:
              st.error("❌ Processing failed and no valid image files were found.")
         else:
              st.error("❌ No valid image files were found after processing uploads (check ZIP content or file types).")
-        return False # No usable images found
+        return False
 
-    # Return true if the process finished and at least one image was found
     return True
-
 
 # --- Main App Logic ---
 if not check_password():
