@@ -110,22 +110,29 @@ for folder in [PRODUCTS_DIR, OUTPUT_DIR]:
 
 col1, col2 = st.columns(2)
 with col1:
-    # --- MODIFICATION: Widen acceptance to handle OS/browser MIME type issues.
+    # Let's accept common image types to avoid initial rejection by the browser's reported MIME type.
     logo_file = st.file_uploader("1. Upload Logo (PNG only)", type=ALLOWED_IMAGE_TYPES) 
 with col2:
     uploaded_files = st.file_uploader("2. Upload Product Images (ZIP, PNG, JPG, JPEG)", type=ALLOWED_UPLOAD_TYPES, accept_multiple_files=True)
 
-# --- MODIFICATION: Add explicit validation for the logo after upload.
-if logo_file and not logo_file.name.lower().endswith('.png'):
-    st.error("The logo file must be a PNG. Please upload a valid .png file.")
-    st.stop()
+# REMOVED: The faulty filename check is gone from here.
 
 if not logo_file or not uploaded_files:
     st.info("💡 Please upload both a logo and product images to continue.")
     st.stop()
 
 try:
-    original_logo = Image.open(BytesIO(logo_file.getvalue())).convert("RGBA")
+    # Open the image from the uploaded bytes
+    original_logo = Image.open(BytesIO(logo_file.getvalue()))
+
+    # --- ADDED: THE DEFINITIVE, CONTENT-BASED VALIDATION ---
+    # After opening the image, check the format Pillow detected from its content.
+    if original_logo.format != 'PNG':
+        st.error(f"The uploaded logo is not a valid PNG file. It was detected as a {original_logo.format} file. Please upload a file in PNG format.")
+        st.stop()
+
+    # Now that we know it's a PNG, we can safely convert to RGBA
+    original_logo = original_logo.convert("RGBA")
 
     # --- Configuration ---
     st.sidebar.header("⚙️ Customization")
@@ -170,6 +177,7 @@ try:
     if os.path.exists(OUTPUT_DIR): shutil.rmtree(OUTPUT_DIR)
     os.makedirs(OUTPUT_DIR)
 
+    # ... (rest of the processing loop remains the same) ...
     for i, product_path in enumerate(files_to_process):
         base_fname = os.path.basename(product_path)
         status_text.text(f"Processing: {base_fname} ({i + 1}/{len(files_to_process)})")
@@ -180,7 +188,6 @@ try:
             watermark_layer = Image.new("RGBA", product_img.size, (0, 0, 0, 0))
             draw = ImageDraw.Draw(watermark_layer)
 
-            # Apply Logo
             logo = original_logo.copy()
             target_w = max(1, int(product_img.width * logo_scale))
             target_h = max(1, int(target_w * (logo.height / logo.width)))
@@ -191,7 +198,6 @@ try:
                 watermark_layer.paste(backdrop, (x_logo + DEFAULT_BACKDROP_OFFSET[0], y_logo + DEFAULT_BACKDROP_OFFSET[1]), backdrop)
             watermark_layer.paste(logo_resized, (x_logo, y_logo), logo_resized)
 
-            # Apply Text Watermark
             if brand_name.strip():
                 bbox = draw.textbbox((0, 0), brand_name.strip(), font=font, anchor="lt")
                 w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
@@ -232,13 +238,11 @@ try:
     if not all_processed_paths:
         st.error("🚫 No images were processed successfully."); st.stop()
 
-    # --- Preview ---
     st.subheader("🖼️ Preview (First 5 Results)")
     cols = st.columns(min(len(all_processed_paths), 5))
     for idx, path in enumerate(all_processed_paths[:len(cols)]):
         with cols[idx]: st.image(path, caption=os.path.basename(path), use_container_width=True)
 
-    # --- Individual Downloads Section ---
     st.subheader("⬇️ Individual Downloads")
     for base_fname, versions in processed_images_map.items():
         if not versions: continue
@@ -257,7 +261,6 @@ try:
                             key=f"dl_{base_fname}_{version['dim_name']}"
                         )
 
-    # --- Zip and Download ---
     st.subheader("📦 Download All as ZIP")
     with st.spinner("Zipping processed images..."):
         zip_buffer = BytesIO()
