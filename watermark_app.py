@@ -110,9 +110,15 @@ for folder in [PRODUCTS_DIR, OUTPUT_DIR]:
 
 col1, col2 = st.columns(2)
 with col1:
-    logo_file = st.file_uploader("1. Upload Logo (PNG)", type=["png"])
+    # --- MODIFICATION: Widen acceptance to handle OS/browser MIME type issues.
+    logo_file = st.file_uploader("1. Upload Logo (PNG only)", type=ALLOWED_IMAGE_TYPES) 
 with col2:
     uploaded_files = st.file_uploader("2. Upload Product Images (ZIP, PNG, JPG, JPEG)", type=ALLOWED_UPLOAD_TYPES, accept_multiple_files=True)
+
+# --- MODIFICATION: Add explicit validation for the logo after upload.
+if logo_file and not logo_file.name.lower().endswith('.png'):
+    st.error("The logo file must be a PNG. Please upload a valid .png file.")
+    st.stop()
 
 if not logo_file or not uploaded_files:
     st.info("💡 Please upload both a logo and product images to continue.")
@@ -157,7 +163,7 @@ try:
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    processed_images_map = {} # NEW: Dictionary to group processed files
+    processed_images_map = {}
     processed_count, error_count = 0, 0
     text_color = ImageColor.getrgb(watermark_color_hex) + (int(255 * opacity),)
 
@@ -167,7 +173,7 @@ try:
     for i, product_path in enumerate(files_to_process):
         base_fname = os.path.basename(product_path)
         status_text.text(f"Processing: {base_fname} ({i + 1}/{len(files_to_process)})")
-        processed_images_map[base_fname] = [] # Initialize list for this source image
+        processed_images_map[base_fname] = []
         
         try:
             product_img = Image.open(product_path).convert("RGBA")
@@ -232,14 +238,14 @@ try:
     for idx, path in enumerate(all_processed_paths[:len(cols)]):
         with cols[idx]: st.image(path, caption=os.path.basename(path), use_container_width=True)
 
-    # --- NEW: Individual Downloads Section ---
+    # --- Individual Downloads Section ---
     st.subheader("⬇️ Individual Downloads")
     for base_fname, versions in processed_images_map.items():
         if not versions: continue
         with st.expander(f"Downloads for: {base_fname}"):
             col1, col2 = st.columns([1, 2])
             with col1:
-                st.image(versions[0]['path'], use_container_width=True) # Preview with the first version
+                st.image(versions[0]['path'], use_container_width=True)
             with col2:
                 for version in versions:
                     with open(version['path'], "rb") as f:
@@ -248,7 +254,7 @@ try:
                             data=f.read(),
                             file_name=os.path.basename(version['path']),
                             mime="image/png",
-                            key=f"dl_{base_fname}_{version['dim_name']}" # Unique key
+                            key=f"dl_{base_fname}_{version['dim_name']}"
                         )
 
     # --- Zip and Download ---
